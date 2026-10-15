@@ -12,6 +12,7 @@ def training(ltmodel, esmalphabet,
              trainfasta, validfasta, outfld, 
              devices=1, clip=0.001, lr=1e-4, 
              epoch=5, batchsize=2, finetune=True,
+             accelerator="gpu",
              delete_checkpoint_after_loading = True):
     os.makedirs(outfld, exist_ok=True)
     ltmodel.lr          = lr
@@ -51,8 +52,8 @@ def training(ltmodel, esmalphabet,
 
     trainer = L.Trainer(accumulate_grad_batches = 2,
                         callbacks = [chk_callback],
-                        accelerator             = "gpu", 
-                        devices                 = 1, 
+                        accelerator             = accelerator, 
+                        devices                 = devices, 
                         max_epochs              = epoch, 
                         gradient_clip_val       = clip,
                         gradient_clip_algorithm = "value")

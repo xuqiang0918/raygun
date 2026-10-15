@@ -41,6 +41,38 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
+
+def resolve_device(device):
+    """[sdaa-adapt] Normalize the ``--device`` argument into a torch device string.
+
+    Accepts:
+      - negative int or "cpu"      -> "cpu"
+      - "cuda"/"cuda:N"            -> unchanged
+      - "sdaa"/"sdaa:N"            -> unchanged
+      - non-negative int N         -> "sdaa:N" if a SDAA accelerator is available,
+                                      otherwise "cuda:N" (original CUDA behaviour)
+    """
+    if isinstance(device, str):
+        d = device.strip().lower()
+        if d == "cpu":
+            return "cpu"
+        if d.startswith("sdaa") or d.startswith("cuda"):
+            return d
+        try:
+            device = int(d)
+        except ValueError:
+            raise ValueError(f"Unsupported --device value: {device!r}")
+    if device < 0:
+        return "cpu"
+    try:
+        import torch.sdaa as _sdaa
+        if _sdaa.is_available():
+            return f"sdaa:{device}"
+    except Exception:
+        pass
+    return f"cuda:{device}"
+
+
 def get_cycles(embedding, finallength, model, nratio,
                numcycles = 0, esmmodel = None, esmbc = None, 
                device = 0):
@@ -81,8 +113,10 @@ def get_params():
                        help  = "`#total raygun samples` / `#PLL-filtered raygun samples`")
     parser.add_argument("--randomize_noise", action = "store_true", default = False, 
                        help  = "If true then, in each sample generation, randomly choose a error-ratio between 0 and `noiseratio`")
-    parser.add_argument("--device", type = int, default = 0, 
-                        help = "GPU device. If CPU, use -1")
+    parser.add_argument("--device", type = str, default = "0", 
+                        help = "Accelerator device. Use an integer index (0, 1, ...), "
+                               "-1 or \"cpu\" for CPU, or an explicit device string "
+                               "such as \"sdaa:0\" / \"cuda:0\"")
     parser.add_argument("--numcycles", type = int, default = 1, 
                        help = "The number of iterative cycles to perform before the final generated sequence")
     parser.add_argument("--penalizerepeats", action = "store_true", default = False, 
@@ -95,8 +129,7 @@ def get_params():
     parser.add_argument("--finetune-lr", default=1e-5, type=float, help="Finetune learning rate. Used only when finetune set to true")
     parser.add_argument("--finetune-bsize", default=2, type=int, help="Finetune batch size. Used only when finetune set to true")
     configs = parser.parse_args()
-    if configs.device < 0:
-        configs.device = "cpu" 
+    configs.device   = resolve_device(configs.device)
     return configs.__dict__
    
 def get_model(config, esmmodel, esmalph):
@@ -109,7 +142,7 @@ def get_model(config, esmmodel, esmalph):
         bsize  = config["finetune_bsize"]
         outdir = config["sample_out_folder"]
         
-        assert config["device"] >= 0, "Finetune set to true, but no GPU provided"
+        assert config["device"] != "cpu", "Finetune set to true, but no GPU provided"
         
         logger.info(f"Finetune set to true. Starting finetuning for {ep} epochs, with lr={lr} on train:{tfasta} and valid:{vfasta}.")
         checkpoint = training(raymodel, esmmodel, esmalph, 
