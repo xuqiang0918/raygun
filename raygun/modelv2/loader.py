@@ -5,7 +5,6 @@ from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
 import esm
 from glob import glob
-import h5py 
 from tqdm import tqdm
 import re
 from io import StringIO
@@ -84,6 +83,7 @@ class RaygunData(Dataset):
         tokens, mask, batches = self.collatefn_wo_esm(batches)
         tokens                = tokens.to(self.device)
         if self.precomputed:
+            import h5py  # optional dependency: only needed for precomputed embeddings
             for idx in ids:
                 efile  = f"{self.embeddingfolder}/{idx}.h5"
                 with h5py.File(efile, "r") as hf:
@@ -97,6 +97,7 @@ class RaygunData(Dataset):
                                         return_contacts = False)["representations"][33]
                 embeddings = embeddings[:, 1:-1, :] # remove the start token
         if self.save:
+            import h5py  # optional dependency: only needed for saving embeddings
             for i, idx, in enumerate(ids):
                 efile = f"{self.embeddingfolder}/{idx}.h5"
                 with h5py.File(efile, "w") as hf:
